@@ -1,16 +1,19 @@
 import os
 import ast
-
+import re
+from pyrogram.enums import ChatType
+from pyrogram.enums import ChatMemberStatus, ParseMode
 from pyrogram import Client as trojanz
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 if bool(os.environ.get("WEBHOOK", False)):
-    from sample_config import Config
+    from config import Config
 else:
     from config import Config
 
 from script import Script
-from database.filters_mdb import del_all, find_filter
+from database.filters_mdb import del_all, find_filter,get_filters,find_filter_byid
+
 
 from database.connections_mdb import(
     all_connections,
@@ -24,7 +27,8 @@ from database.connections_mdb import(
 
 @trojanz.on_callback_query()
 async def cb_handler(client, query):
-
+    original_message = query.message.reply_to_message
+        
     if query.data == "start_data":
         await query.answer()
         keyboard = InlineKeyboardMarkup(
@@ -41,7 +45,63 @@ async def cb_handler(client, query):
             disable_web_page_preview=True
         )
         return
-
+    elif query.data.startswith("backselect_"):
+        if original_message.from_user.id == query.from_user.id:
+            old_caption = query.message.caption or ""
+            old_caption = old_caption.replace("Select Quality","")
+            search = query.data.split("_")
+            search = search[1]
+            print(search)
+            name = query.message.reply_to_message.text
+            group_id = query.message.chat.id
+            keywords = await get_filters(group_id)
+            for keyword in reversed(sorted(keywords, key=len)):
+                pattern = r"( |^|[^\w])" + re.escape(keyword) + r"( |$|[^\w])"
+                if re.search(pattern, name, flags=re.IGNORECASE):
+                    reply_text, btn, alert, fileid = await find_filter_byid(id=search, group_id=group_id)
+                    button_data = eval(btn)
+                    buttons = []
+                    for key in button_data:
+                        callback_data = f"selectquality_{key.replace(' ', '%$')}_{search}"
+                        button = InlineKeyboardButton(key, callback_data=callback_data)
+                        buttons.append([button])
+                    reply_markup = InlineKeyboardMarkup(buttons)
+            await query.message.edit_text(f"{old_caption}",reply_markup=reply_markup)
+        else:
+            await client.answer_callback_query(query.id, text="This callback is only for the sender.")
+    elif query.data.startswith("selectquality_"):
+        if original_message.from_user.id == query.from_user.id:
+            old_caption = query.message.caption or ""
+            search = query.data.split("_")
+            dataid = search[2]
+            search = search[1]
+            season = search.replace("%$"," ")
+            name = query.message.reply_to_message.text
+            group_id = query.message.chat.id
+            keywords = await get_filters(group_id)
+            for keyword in reversed(sorted(keywords, key=len)):
+                pattern = r"( |^|[^\w])" + re.escape(keyword) + r"( |$|[^\w])"
+                if re.search(pattern, name, flags=re.IGNORECASE):
+                    print(await find_filter_byid(group_id, dataid))
+                    reply_text, btn, alert, fileid = await find_filter_byid(group_id, dataid)
+                    button_data = eval(btn)
+                    links = button_data[season]
+                    first_row = []
+                    second_row = []
+                    keyboard = []
+                    for resolution, url in links.items():
+                        if url is not None and url != "":
+                            url = url.replace("https://t.me/God_pluto_bot?start=", "https://t.me/dcfusionbot/betalab?startapp=tgseries_")
+                            if len(first_row) < 2:
+                                first_row.append(InlineKeyboardButton(f"{resolution}", url=url))
+                            else:
+                                second_row.append(InlineKeyboardButton(f"{resolution}", url=url))
+                    keyboard = [first_row, second_row]
+                    keyboard.append([InlineKeyboardButton("Back ↩", callback_data=f"backselect_{dataid}")])
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text(f"{old_caption}\n\nSelect Quality",reply_markup=reply_markup)
+        else:
+            await client.answer_callback_query(query.id, text="This callback is only for the sender.")
     elif query.data == "help_data":
         await query.answer()
         keyboard = InlineKeyboardMarkup(
@@ -94,7 +154,7 @@ async def cb_handler(client, query):
         userid = query.from_user.id
         chat_type = query.message.chat.type
 
-        if chat_type == "private":
+        if chat_type == ChatType.PRIVATE:
             grpid  = await active_connection(str(userid))
             if grpid is not None:
                 grp_id = grpid
@@ -111,7 +171,7 @@ async def cb_handler(client, query):
                 )
                 return
 
-        elif (chat_type == "group") or (chat_type == "supergroup"):
+        elif (chat_type == ChatType.GROUP) or (chat_type == ChatType.SUPERGROUP):
             grp_id = query.message.chat.id
             title = query.message.chat.title
 
@@ -119,7 +179,7 @@ async def cb_handler(client, query):
             return
 
         st = await client.get_chat_member(grp_id, userid)
-        if (st.status == "creator") or (str(userid) in Config.AUTH_USERS):    
+        if (st.status == ChatMemberStatus.OWNER) or (str(userid) in Config.AUTH_USERS):    
             await del_all(query.message, grp_id, title)
         else:
             await query.answer("You need to be Group Owner or an Auth User to do that!",show_alert=True)
@@ -128,14 +188,14 @@ async def cb_handler(client, query):
         userid = query.from_user.id
         chat_type = query.message.chat.type
         
-        if chat_type == "private":
+        if chat_type == ChatType.PRIVATE:
             await query.message.reply_to_message.delete()
             await query.message.delete()
 
-        elif (chat_type == "group") or (chat_type == "supergroup"):
+        elif (chat_type == ChatType.GROUP) or (chat_type == ChatType.SUPERGROUP):
             grp_id = query.message.chat.id
             st = await client.get_chat_member(grp_id, userid)
-            if (st.status == "creator") or (str(userid) in Config.AUTH_USERS):
+            if (st.status == ChatMemberStatus.OWNER) or (str(userid) in Config.AUTH_USERS):
                 await query.message.delete()
                 try:
                     await query.message.reply_to_message.delete()
