@@ -6,6 +6,7 @@ import shutil
 import heroku3
 import requests
 
+from pyrogram.enums import ChatMemberStatus, ParseMode
 from pyrogram import filters
 from pyrogram import Client as trojanz
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -106,7 +107,7 @@ async def showinfo(client, message):
         f"<b>Permanant USER link</b> : <a href='tg://user?id={id}'>Click here!</a>\n\n"
         f"<b>DC ID</b> : {dcid}\n\n",
         quote=True,
-        parse_mode="html"
+        parse_mode=ParseMode.HTML
     )
 
 
@@ -205,7 +206,7 @@ async def bot_status(client,message):
         f"{quota_details}"
         f"{disk}",
         quote=True,
-        parse_mode="md"
+        parse_mode=ParseMode.HTML
     )
 
 
